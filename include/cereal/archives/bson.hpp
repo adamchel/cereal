@@ -16,6 +16,22 @@
 namespace cereal
 {
 
+  template <class BsonT>
+  struct is_bson {
+      static constexpr bool value = std::is_same<BsonT, bsoncxx::types::b_double>::value   ||
+                                 std::is_same<BsonT, bsoncxx::types::b_utf8>::value     ||
+                                 std::is_same<BsonT, bsoncxx::types::b_document>::value ||
+                                 std::is_same<BsonT, bsoncxx::types::b_array>::value    ||
+                                 std::is_same<BsonT, bsoncxx::types::b_binary>::value   ||
+                                 std::is_same<BsonT, bsoncxx::types::b_oid>::value      ||
+                                 std::is_same<BsonT, bsoncxx::types::b_bool>::value     ||
+                                 std::is_same<BsonT, bsoncxx::types::b_date>::value     ||
+                                 std::is_same<BsonT, bsoncxx::types::b_int32>::value    ||
+                                 std::is_same<BsonT, bsoncxx::types::b_int64>::value    ||
+                                 std::is_same<BsonT, bsoncxx::oid>::value               ||
+                                 std::is_same<BsonT, std::chrono::system_clock::time_point>::value;
+  };
+
   class BSONOutputArchive : public OutputArchive<BSONOutputArchive>
   {
     enum class NodeType { StartObject, InObject, StartArray, InArray, Root };
@@ -54,18 +70,6 @@ namespace cereal
         //   //TODO itsWriteStream.close() ?
         // }
       }
-
-      //! Saves some binary data, encoded as a base64 string, with an optional name
-      /*! This will create a new node, optionally named, and insert a value that consists of
-          the data encoded as a base64 string */
-      void saveBinaryValue( const void * data, size_t size, const char * name = nullptr )
-      {
-        /*TODO Append binary data setNextName( name );
-        writeName();
-
-        auto base64string = base64::encode( reinterpret_cast<const unsigned char *>( data ), size );
-        saveValue( base64string );*/
-      };
 
       //! @}
       /*! @name Internal Functionality
@@ -112,6 +116,8 @@ namespace cereal
             }
             closedObj = true;
             break;
+          default:
+            break;
         }
 
 
@@ -136,14 +142,29 @@ namespace cereal
         itsNextName = name;
       }
 
+      // Add saveValues for every BSON type except those that 
+      // are deprecated and those that are reserved for internal use
+      void saveValue(bsoncxx::types::b_double d)            { itsBuilder.append(d); }
+      void saveValue(bsoncxx::types::b_utf8 u)              { itsBuilder.append(u); }
+      void saveValue(bsoncxx::types::b_document d)          { itsBuilder.append(d); }
+      void saveValue(bsoncxx::types::b_array a)             { itsBuilder.append(a); }
+      void saveValue(bsoncxx::types::b_binary b)            { itsBuilder.append(b); }
+      void saveValue(bsoncxx::types::b_oid o)               { itsBuilder.append(o); }
+      void saveValue(bsoncxx::oid o)                        { itsBuilder.append(o); }
+      void saveValue(bsoncxx::types::b_bool b)              { itsBuilder.append(b); }
+      void saveValue(bsoncxx::types::b_date d)              { itsBuilder.append(d); }
+      void saveValue(bsoncxx::types::b_int32 i)             { itsBuilder.append(i); }
+      void saveValue(bsoncxx::types::b_int64 i)             { itsBuilder.append(i); }
+
+      // Add saveValues for C++ types that have a corresponding BSON type 
       //! Saves a bool to the current node
-      void saveValue(bool b)          { itsBuilder.append(b); }
+      void saveValue(bool b)                { itsBuilder.append(b); }
       //! Saves a 32 or 64 bit int to the current node
-      void saveValue(std::int32_t i)  { itsBuilder.append(i); }
-      void saveValue(std::int64_t i)  { itsBuilder.append(i); }
+      void saveValue(std::int32_t i)        { itsBuilder.append(i); }
+      void saveValue(std::int64_t i)        { itsBuilder.append(i); }
 
       //! Saves a double to the current node
-      void saveValue(double d)        { itsBuilder.append(d); }
+      void saveValue(double d)              { itsBuilder.append(d); }
       //! Saves a string to the current node
       void saveValue(std::string const & s) { itsBuilder.append(s); }
       //! Saves a const char * to the current node
@@ -152,8 +173,6 @@ namespace cereal
       //! Saves a datetime to the current node
       void saveValue(std::chrono::system_clock::time_point tp) { itsBuilder.append(bsoncxx::types::b_date{tp}); }
 
-      // TODO: binary, UTF-8 string, OID, null, regex, JS code, scoped JS code, minkey, maxkey
-      // TODO: add ALL non-deprecated BSON types in core.hpp including those with primitive components
     private:
       // Some compilers/OS have difficulty disambiguating the above for various flavors of longs, so we provide
       // special overloads to handle these cases.
@@ -185,22 +204,6 @@ namespace cereal
                                           !std::is_same<T, std::uint64_t>::value> = traits::sfinae> inline
       void saveValue( T t ){ saveLong( t ); }
 #endif // _MSC_VER
-
-      // TODO: get rid of this?
-      //! Save exotic arithmetic as strings to current node
-      /*! Handles long long (if distinct from other types), unsigned long (if distinct), and long double */
-      template <class T, traits::EnableIf<std::is_arithmetic<T>::value,
-                                          !std::is_same<T, long>::value,
-                                          !std::is_same<T, unsigned long>::value,
-                                          !std::is_same<T, std::int64_t>::value,
-                                          !std::is_same<T, std::uint64_t>::value,
-                                          (sizeof(T) >= sizeof(long double) || sizeof(T) >= sizeof(long long))> = traits::sfinae> inline
-      void saveValue(T const & t)
-      {
-        std::stringstream ss; ss.precision( std::numeric_limits<long double>::max_digits10 );
-        ss << t;
-        saveValue( ss.str() );
-      }
 
       //! Write the name of the upcoming node and prepare object/array state
       /*! Since writeName is called for every value that is output, regardless of
@@ -263,6 +266,7 @@ namespace cereal
       std::stack<uint32_t> itsNameCounter; //!< Counter for creating unique names for unnamed nodes
       std::stack<NodeType> itsNodeStack;
   }; // BSONOutputArchive
+
 
   // ######################################################################
   //! An input archive designed to load data from JSON
@@ -659,6 +663,21 @@ namespace cereal
   // { }
 
   // ######################################################################
+  //! Prologue and Epilogue for BSON types, which should not be confused 
+  //  as objects or arrays
+
+  template<class BsonT, traits::EnableIf<is_bson<BsonT>::value> = traits::sfinae>
+  inline void prologue( BSONOutputArchive & ar, BsonT const &)
+  {
+    ar.writeName(); 
+  }
+
+  template<class BsonT, traits::EnableIf<is_bson<BsonT>::value> = traits::sfinae>
+  inline void epilogue( BSONOutputArchive &, BsonT const &)
+  { }
+
+
+  // ######################################################################
   //! Prologue for all other types for JSON archives (except minimal types)
   /*! Starts a new node, named either automatically or by some NVP,
       that may be given data by the type about to be archived
@@ -666,7 +685,8 @@ namespace cereal
       Minimal types do not start or finish nodes */
   template <class T, traits::DisableIf<std::is_arithmetic<T>::value ||
                                        traits::has_minimal_base_class_serialization<T, traits::has_minimal_output_serialization, BSONOutputArchive>::value ||
-                                       traits::has_minimal_output_serialization<T, BSONOutputArchive>::value> = traits::sfinae>
+                                       traits::has_minimal_output_serialization<T, BSONOutputArchive>::value || 
+                                       is_bson<T>::value> = traits::sfinae>
   inline void prologue( BSONOutputArchive & ar, T const & )
   {
     ar.startNode();
@@ -688,7 +708,8 @@ namespace cereal
       Minimal types do not start or finish nodes */
   template <class T, traits::DisableIf<std::is_arithmetic<T>::value ||
                                        traits::has_minimal_base_class_serialization<T, traits::has_minimal_output_serialization, BSONOutputArchive>::value ||
-                                       traits::has_minimal_output_serialization<T, BSONOutputArchive>::value> = traits::sfinae>
+                                       traits::has_minimal_output_serialization<T, BSONOutputArchive>::value ||
+                                       is_bson<T>::value> = traits::sfinae>
   inline void epilogue( BSONOutputArchive & ar, T const & )
   {
     ar.finishNode();
@@ -798,7 +819,7 @@ namespace cereal
   // }
 
   // ######################################################################
-  //! Saving SizeTags to JSON
+  //! Saving SizeTags to BSON
   template <class T> inline
   void CEREAL_SAVE_FUNCTION_NAME( BSONOutputArchive &, SizeTag<T> const & )
   {
@@ -811,6 +832,14 @@ namespace cereal
   // {
   //   ar.loadSize( st.size );
   // }
+
+  // ######################################################################
+  //! Saving BSON types to BSON
+  template<class BsonT, traits::EnableIf<is_bson<BsonT>::value> = traits::sfinae> inline
+  void CEREAL_SAVE_FUNCTION_NAME( BSONOutputArchive& ar, BsonT const & bsonVal ) 
+  {
+    ar.saveValue(bsonVal);
+  }
 } // namespace cereal
 
 // register archives for polymorphic support
