@@ -312,7 +312,7 @@ namespace cereal
       typedef rapidjson::Document::GenericValue GenericValue;*/
 
       typedef std::vector<char> buffer_type;
-      enum class NodeState { Root, InObject, InEmbeddedObject };
+      enum class NodeState { Root, InObject, InEmbeddedObject, InEmbeddedArray };
 
     public:
       /*! @name Common Functionality
@@ -476,24 +476,31 @@ namespace cereal
           Resets the NVP name after called.
 
           @throws Exception if an expectedName is given and not found */
-      inline bsoncxx::document::element search()
+
+      // TODO: figure out why array::element privately inherits
+      inline std::unique_ptr<bsoncxx::document::element> search()
       {
+        
+        std::unique_ptr<bsoncxx::document::element> elem;
+
         // The name an NVP provided with setNextName()
         if( itsNextName )
         {
           // If we're in an object in the Root (InObject), 
           // look for the key in the current BSON view.
           if(itsNodeStack.top() == NodeState::InObject) {
-            auto elem = (*curBsonView)[itsNextName];
+            auto elemFromView = (*curBsonView)[itsNextName];
 
             // Provide an error message if the key is not found.
-            if(!elem) {
+            if(!elemFromView) {
                 std::string error_msg;
                 error_msg += "No element found with the key ";
                 error_msg += itsNextName;
                 error_msg += ".";
                 throw cereal::Exception(error_msg);
             }
+
+            elem.reset(new bsoncxx::document::element(elemFromView));
 
             itsNextName = nullptr;
 
@@ -507,10 +514,10 @@ namespace cereal
           // If we're in an embedded object, look for the key at the top of 
           // the embedded object stack.
           if(itsNodeStack.top() == NodeState::InEmbeddedObject) {
-            auto elem = embeddedBsonDocStack.top()[itsNextName];
+            auto elemFromView = embeddedBsonDocStack.top()[itsNextName];
 
             // Provide an error message if the key is not found.
-            if(!elem) {
+            if(!elemFromView) {
                 std::string error_msg;
                 error_msg += "No element found with the key ";
                 error_msg += itsNextName;
@@ -518,14 +525,32 @@ namespace cereal
                 throw cereal::Exception(error_msg);
             }
 
+            elem.reset(new bsoncxx::document::element(elemFromView));
+
             itsNextName = nullptr;
 
             return elem;
 
           }
+        } else if ( itsNodeStack.top() == NodeState::InEmbeddedArray) {
+            auto elemFromView = *(embeddedBsonArrayIteratorStack.top());
+            ++(embeddedBsonArrayIteratorStack.top());
+
+            if(!elemFromView) {
+                throw cereal::Exception("Invalid element found in array, or array is out of bounds.\n");
+            }
+
+            elem.reset(new bsoncxx::document::element(
+              elemFromView.raw(), 
+              elemFromView.length(),
+              elemFromView.offset()));
+
+            return elem;
         }
 
-        return bsoncxx::document::element();
+        // Return an invalid element.
+        // TODO: Maybe this should be an exception.
+        return std::unique_ptr<bsoncxx::document::element>(new bsoncxx::document::element());
 
       }
 
@@ -544,12 +569,31 @@ namespace cereal
       { 
         if(itsNextName != nullptr) {
           std::cout << "Starting node " << itsNextName << "\n";  
-        } else {
+        } else if(itsNodeStack.top() == NodeState::Root) {
           std::cout << "Starting root node.\n";
+        } else {
+          std::cout << "Starting node within array.\n";
         }
-        if(itsNodeStack.top() == NodeState::InObject || itsNodeStack.top() == NodeState::InEmbeddedObject) {
-            embeddedBsonDocStack.push(search().get_document().value);
-            itsNodeStack.push(NodeState::InEmbeddedObject);
+        if(itsNodeStack.top() == NodeState::InObject || 
+           itsNodeStack.top() == NodeState::InEmbeddedObject ||
+           itsNodeStack.top() == NodeState::InEmbeddedArray) {
+
+            auto newNode = search();
+
+            if(newNode->type() == bsoncxx::type::k_document) {
+                std::cout << "Found document in node.\n";
+                embeddedBsonDocStack.push(newNode->get_document().value);
+                itsNodeStack.push(NodeState::InEmbeddedObject);
+            } else if (newNode->type() == bsoncxx::type::k_array) {
+                std::cout << "Found array in node.\n";
+                embeddedBsonArrayStack.push(newNode->get_array().value);
+
+                embeddedBsonArrayIteratorStack.push(embeddedBsonArrayStack.top().begin());
+                itsNodeStack.push(NodeState::InEmbeddedArray);
+            } else {
+                throw cereal::Exception("Node requested is neither document nor array.\n");
+            }
+
         } else if(itsNodeStack.top() == NodeState::Root) {
             itsNodeStack.push(NodeState::InObject);  
         }
@@ -564,9 +608,12 @@ namespace cereal
       //! Finishes the most recently started node
       void finishNode()
       {
-        // If we're in an embedded object, pop it from the embedded object stack.
+        // If we're in an embedded object or array, pop it from its respective stack(s).
         if(itsNodeStack.top() == NodeState::InEmbeddedObject) {
           embeddedBsonDocStack.pop();
+        } else if(itsNodeStack.top() == NodeState::InEmbeddedArray) {
+          embeddedBsonArrayStack.pop();
+          embeddedBsonArrayIteratorStack.pop();
         }
 
         // Pop the node type from the stack.
@@ -600,7 +647,7 @@ namespace cereal
                                           sizeof(T) < sizeof(int64_t)> = traits::sfinae> inline
       void loadValue(T & val)
       {
-        val = search().get_int32();
+        val = search()->get_int32();
       }
 
       // //! Loads a value from the current node - small unsigned overload
@@ -624,73 +671,73 @@ namespace cereal
 
       void loadValue(bsoncxx::types::b_double & val) 
       { 
-        val = search().get_double();
+        val = search()->get_double();
       }
 
       void loadValue(bsoncxx::types::b_utf8 & val) 
       { 
-        val = search().get_utf8();
+        val = search()->get_utf8();
       }
 
       void loadValue(bsoncxx::types::b_document & val) 
       { 
-        val = search().get_document();
+        val = search()->get_document();
       }
 
       void loadValue(bsoncxx::types::b_array &val) {
-        val = search().get_array();
+        val = search()->get_array();
       }
       void loadValue(bsoncxx::types::b_binary &val) {
-        val = search().get_binary();
+        val = search()->get_binary();
       }
       void loadValue(bsoncxx::types::b_oid &val) {
-        val.value = search().get_oid().value;
+        val.value = search()->get_oid().value;
       }
       void loadValue(bsoncxx::oid &val) {
-        val = search().get_oid().value;
+        val = search()->get_oid().value;
       }
       void loadValue(bsoncxx::types::b_bool &val) {
-        val = search().get_bool();
+        val = search()->get_bool();
       }
       void loadValue(bsoncxx::types::b_date &val) {
-        val = search().get_date();
+        val = search()->get_date();
       }
       void loadValue(bsoncxx::types::b_int32 &val) {
-        val = search().get_int32();
+        val = search()->get_int32();
       }
       void loadValue(bsoncxx::types::b_int64 &val) {
-        val = search().get_int64();
+        val = search()->get_int64();
       }
 
       //! Loads a datetime from the current node
       void loadValue(std::chrono::system_clock::time_point & val) { 
-        val = search().get_date();
+        val = search()->get_date();
       }
 
       // loadValues for C++ types that have a corresponding BSON type 
       void loadValue(bool & val) 
       { 
-        val = search().get_bool();
+        val = search()->get_bool();
       }
       //! Loads a 32 or 64 bit int from the current node
       void loadValue(std::int32_t & val) 
       { 
-        val = search().get_int32();
+        val = search()->get_int32();
       }
       void loadValue(std::int64_t & val) 
       { 
-        val = search().get_int64();
+        val = search()->get_int64();
       }
 
       //! Loads a double from the current node
       void loadValue(double & val) 
       { 
-        val = search().get_double();
+        val = search()->get_double();
       }
 
       // Loads a string from the current node
       void loadValue(std::string & val) {
-        val = search().get_utf8().value.to_string();
+        val = search()->get_utf8().value.to_string();
       }
 
       // Special cases to handle various flavors of long, which tend to conflict with
@@ -759,8 +806,13 @@ namespace cereal
       //! Loads the size for a SizeTag
       void loadSize(size_type & size)
       {
-        size = search().get_array().value.length();
-        //size = (itsIteratorStack.rbegin() + 1)->value().Size();
+        if(itsNodeStack.top() != NodeState::InEmbeddedArray) {
+            throw cereal::Exception("Requesting a size tag when not in an array.\n");
+        }
+        std::cout << "Attempting to load size.\n";
+        size = std::distance(embeddedBsonArrayStack.top().begin(), 
+                             embeddedBsonArrayStack.top().end());
+        std::cout << "Size loaded is " << size << ".\n";
       }
 
       //! @}
@@ -776,6 +828,8 @@ namespace cereal
 
       std::vector<bsoncxx::document::view>::iterator curBsonView;
       std::stack<bsoncxx::document::view> embeddedBsonDocStack;
+      std::stack<bsoncxx::array::view> embeddedBsonArrayStack;
+      std::stack<bsoncxx::array::view::iterator> embeddedBsonArrayIteratorStack;
 
       //bsoncxx::document::element curElement;
 
