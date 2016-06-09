@@ -34,7 +34,7 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
     /**
     * The possible states for the BSON nodes being output by the archive.
     */
-    enum class NodeType { Root, StartObject, InObject, StartArray, InArray };
+    enum class OutputNodeType { Root, StartObject, InObject, StartArray, InArray };
 
     typedef bsoncxx::builder::core BSONBuilder;
 
@@ -47,11 +47,11 @@ public:
     */
     BSONOutputArchive(std::ostream& stream)
         : OutputArchive<BSONOutputArchive>{this},
-          itsBuilder{false},
-          itsWriteStream{stream},
-          itsNextName{nullptr} {
-        itsNameCounter.push(0);
-        itsNodeStack.push(NodeType::Root);
+          _bsonBuilder{false},
+          _writeStream{stream},
+          _nextName{nullptr} {
+        _nameCounter.push(0);
+        _nodeTypeStack.push(OutputNodeType::Root);
     }
 
     /**
@@ -63,8 +63,8 @@ public:
      */
     void startNode() {
         writeName();
-        itsNodeStack.push(NodeType::StartObject);
-        itsNameCounter.push(0);
+        _nodeTypeStack.push(OutputNodeType::StartObject);
+        _nameCounter.push(0);
     }
 
     /**
@@ -78,19 +78,19 @@ public:
         // We'll also end any object/arrays we happen to be in.
 
         bool closedObj = false;
-        switch (itsNodeStack.top()) {
-            case NodeType::StartArray:
-                itsBuilder.open_array();
-            case NodeType::InArray:
-                itsBuilder.close_array();
+        switch (_nodeTypeStack.top()) {
+            case OutputNodeType::StartArray:
+                _bsonBuilder.open_array();
+            case OutputNodeType::InArray:
+                _bsonBuilder.close_array();
                 break;
-            case NodeType::StartObject:
-                if (itsNodeStack.size() > 2) {
-                    itsBuilder.open_document();
+            case OutputNodeType::StartObject:
+                if (_nodeTypeStack.size() > 2) {
+                    _bsonBuilder.open_document();
                 }
-            case NodeType::InObject:
-                if (itsNodeStack.size() > 2) {
-                    itsBuilder.close_document();
+            case OutputNodeType::InObject:
+                if (_nodeTypeStack.size() > 2) {
+                    _bsonBuilder.close_document();
                 }
                 closedObj = true;
                 break;
@@ -98,20 +98,20 @@ public:
                 break;
         }
 
-        itsNodeStack.pop();
-        itsNameCounter.pop();
+        _nodeTypeStack.pop();
+        _nameCounter.pop();
 
         // TODO: Somehow resolve issue where non-object
         // values pushed to root will end up in the next
         // object.
         if (closedObj) {
-            if (itsNodeStack.top() == NodeType::Root) {
+            if (_nodeTypeStack.top() == OutputNodeType::Root) {
                 // Write the BSON data for the document that was just completed,
                 // and reset the builder for the next document.
-                itsWriteStream.write(
-                    reinterpret_cast<const char*>(itsBuilder.view_document().data()),
-                    itsBuilder.view_document().length());
-                itsBuilder.clear();
+                _writeStream.write(
+                    reinterpret_cast<const char*>(_bsonBuilder.view_document().data()),
+                    _bsonBuilder.view_document().length());
+                _bsonBuilder.clear();
             }
         }
     }
@@ -123,7 +123,7 @@ public:
      *    The name for the next node or element.
      */
     void setNextName(const char* name) {
-        itsNextName = name;
+        _nextName = name;
     }
 
     /**
@@ -136,7 +136,7 @@ public:
      */
     template <class BsonT, traits::EnableIf<is_bson<BsonT>::value> = traits::sfinae>
     void saveValue(BsonT val) {
-        itsBuilder.append(val);
+        _bsonBuilder.append(val);
     }
 
     /**
@@ -146,7 +146,7 @@ public:
      *    The timepoint to save to the archive.
      */
     void saveValue(std::chrono::system_clock::time_point tp) {
-        itsBuilder.append(bsoncxx::types::b_date{tp});
+        _bsonBuilder.append(bsoncxx::types::b_date{tp});
     }
 
     /**
@@ -156,7 +156,7 @@ public:
      *    The bool to save to the archive.
      */
     void saveValue(bool b) {
-        itsBuilder.append(b);
+        _bsonBuilder.append(b);
     }
 
     /**
@@ -166,7 +166,7 @@ public:
      *    The int32_t to save to the archive.
      */
     void saveValue(std::int32_t i) {
-        itsBuilder.append(i);
+        _bsonBuilder.append(i);
     }
 
     /**
@@ -176,7 +176,7 @@ public:
      *    The int32_t to save to the archive.
      */
     void saveValue(std::int64_t i) {
-        itsBuilder.append(i);
+        _bsonBuilder.append(i);
     }
 
     /**
@@ -186,7 +186,7 @@ public:
      *    The double to save to the archive.
      */
     void saveValue(double d) {
-        itsBuilder.append(d);
+        _bsonBuilder.append(d);
     }
 
     /**
@@ -196,7 +196,7 @@ public:
      *    The std::string to save to the archive.
      */
     void saveValue(std::string const& s) {
-        itsBuilder.append(s);
+        _bsonBuilder.append(s);
     }
 
     /**
@@ -206,7 +206,7 @@ public:
      *    The char* string to save to the archive.
      */
     void saveValue(char const* s) {
-        itsBuilder.append(s);
+        _bsonBuilder.append(s);
     }
 
     /**
@@ -223,31 +223,31 @@ public:
      *   5. Finish the node.
      */
     void writeName() {
-        NodeType const& nodeType = itsNodeStack.top();
+        OutputNodeType const& nodeType = _nodeTypeStack.top();
 
         // Start up either an object or an array, depending on state.
-        if (nodeType == NodeType::StartArray) {
-            itsBuilder.open_array();
-            itsNodeStack.top() = NodeType::InArray;
-        } else if (nodeType == NodeType::StartObject) {
-            itsNodeStack.top() = NodeType::InObject;
-            if (itsNodeStack.size() > 2) {
-                itsBuilder.open_document();
+        if (nodeType == OutputNodeType::StartArray) {
+            _bsonBuilder.open_array();
+            _nodeTypeStack.top() = OutputNodeType::InArray;
+        } else if (nodeType == OutputNodeType::StartObject) {
+            _nodeTypeStack.top() = OutputNodeType::InObject;
+            if (_nodeTypeStack.size() > 2) {
+                _bsonBuilder.open_document();
             }
         }
 
         // Elements in arrays do not have names.
-        if (nodeType == NodeType::InArray)
+        if (nodeType == OutputNodeType::InArray)
             return;
 
-        if (itsNextName == nullptr) {
+        if (_nextName == nullptr) {
             // Generate a unique name for this unnamed node.
-            std::string name = "value" + std::to_string(itsNameCounter.top()++) + "\0";
-            itsBuilder.key_owned(name);
+            std::string name = "value" + std::to_string(_nameCounter.top()++) + "\0";
+            _bsonBuilder.key_owned(name);
         } else {
             // Set the key of this element to the name stored by the archiver.
-            itsBuilder.key_owned(itsNextName);
-            itsNextName = nullptr;
+            _bsonBuilder.key_owned(_nextName);
+            _nextName = nullptr;
         }
     }
 
@@ -256,24 +256,24 @@ public:
      * object.
      */
     void makeArray() {
-        itsNodeStack.top() = NodeType::StartArray;
+        _nodeTypeStack.top() = OutputNodeType::StartArray;
     }
 
 private:
     // The BSONCXX builder for this archive.
-    BSONBuilder itsBuilder;
+    BSONBuilder _bsonBuilder;
 
     // The stream to which to write the BSON archive.
-    std::ostream& itsWriteStream;
+    std::ostream& _writeStream;
 
     // The name of the next element to be added to the archive.
-    char const* itsNextName;
+    char const* _nextName;
 
     // Counter for creating unique names for unnamed nodes.
-    std::stack<uint32_t> itsNameCounter;
+    std::stack<uint32_t> _nameCounter;
 
     // A stack maintaining the state of the nodes currently being written.
-    std::stack<NodeType> itsNodeStack;
+    std::stack<OutputNodeType> _nodeTypeStack;
 
 };  // BSONOutputArchive
 
@@ -281,7 +281,7 @@ private:
 class BSONInputArchive : public InputArchive<BSONInputArchive>, public traits::TextArchive {
 private:
     typedef std::vector<char> buffer_type;
-    enum class NodeState { Root, InObject, InEmbeddedObject, InEmbeddedArray };
+    enum class InputNodeType { Root, InObject, InEmbeddedObject, InEmbeddedArray };
 
 public:
     /**
@@ -291,22 +291,22 @@ public:
     *    The stream from which to read BSON data.
     */
     BSONInputArchive(std::istream& stream)
-        : InputArchive<BSONInputArchive>(this), itsNextName(nullptr), itsReadStream(stream) {
+        : InputArchive<BSONInputArchive>(this), _nextName(nullptr), _readStream(stream) {
 
         // Add the root node to the stack.
-        itsNodeStack.push(NodeState::Root);
+        _nodeTypeStack.push(InputNodeType::Root);
 
         // Calculate out how much data is in the stream.
-        itsReadStream.seekg(0, itsReadStream.end);
-        size_t streamLength = itsReadStream.tellg();
-        itsReadStream.seekg(0, itsReadStream.beg);
+        _readStream.seekg(0, _readStream.end);
+        size_t streamLength = _readStream.tellg();
+        _readStream.seekg(0, _readStream.beg);
 
         // Collect every BSON documents from the stream.
-        while (itsReadStream.tellg() < streamLength) {
+        while (_readStream.tellg() < streamLength) {
             // Determine the size of the BSON document in bytes.
             int32_t docsize;
             char docsize_buf[4];
-            itsReadStream.read(docsize_buf, sizeof(docsize));
+            _readStream.read(docsize_buf, sizeof(docsize));
             std::memcpy(&docsize, docsize_buf, sizeof(docsize));
 
             // Create a buffer to store the BSON document.
@@ -314,43 +314,43 @@ public:
             bsonData.reserve(docsize);
 
             // Read the BSON data from the stream into the buffer.
-            itsReadStream.seekg(-sizeof(docsize), std::ios_base::cur);
-            itsReadStream.read(&bsonData[0], docsize);
-            rawBsonDocuments.push_back(std::move(bsonData));
+            _readStream.seekg(-sizeof(docsize), std::ios_base::cur);
+            _readStream.read(&bsonData[0], docsize);
+            _rawBsonDocuments.push_back(std::move(bsonData));
 
             // Get a BSONCXX view of the document.
-            bsonViews.push_back(
-                bsoncxx::document::view{reinterpret_cast<uint8_t*>(&rawBsonDocuments.back()[0]),
+            _bsonViews.push_back(
+                bsoncxx::document::view{reinterpret_cast<uint8_t*>(&_rawBsonDocuments.back()[0]),
                                         static_cast<size_t>(docsize)});
         }
 
         // Set the root view iterator to the first BSON document in the stream.
-        curBsonView = bsonViews.begin();
+        _curBsonView = _bsonViews.begin();
     }
 
 private:
     /**
      * Searches for the next BSON element to be retrieved and loaded.
      *
-     * @return a pointer to the element with itsNextName as a key, or if the current node is an
+     * @return a pointer to the element with _nextName as a key, or if the current node is an
      *         array, the next element in that array.
      */
     inline std::unique_ptr<bsoncxx::document::element> search() {
         // Set up the return value.
         std::unique_ptr<bsoncxx::document::element> elem;
 
-        if (itsNextName) {
+        if (_nextName) {
             // If we're in an object in the Root (InObject),
             // look for the key in the current BSON view.
-            if (itsNodeStack.top() == NodeState::InObject) {
-                auto elemFromView = (*curBsonView)[itsNextName];
+            if (_nodeTypeStack.top() == InputNodeType::InObject) {
+                auto elemFromView = (*_curBsonView)[_nextName];
                 elem.reset(new bsoncxx::document::element(elemFromView));
             }
 
             // If we're in an embedded object, look for the key in the object
             // at the top of the embedded object stack.
-            if (itsNodeStack.top() == NodeState::InEmbeddedObject) {
-                auto elemFromView = embeddedBsonDocStack.top()[itsNextName];
+            if (_nodeTypeStack.top() == InputNodeType::InEmbeddedObject) {
+                auto elemFromView = _embeddedBsonDocStack.top()[_nextName];
                 elem.reset(new bsoncxx::document::element(elemFromView));
             }
 
@@ -358,22 +358,22 @@ private:
             if (!(*elem)) {
                 std::string error_msg;
                 error_msg += "No element found with the key ";
-                error_msg += itsNextName;
+                error_msg += _nextName;
                 error_msg += ".";
                 throw cereal::Exception(error_msg);
             }
 
             // Reset the name of the next element to be retrieved.
-            itsNextName = nullptr;
+            _nextName = nullptr;
 
             return elem;
 
-        } else if (itsNodeStack.top() == NodeState::InEmbeddedArray) {
+        } else if (_nodeTypeStack.top() == InputNodeType::InEmbeddedArray) {
             // If we're in an array (InEmbeddedArray), retrieve an element from
             // the array iterator at the top of the stack, and increment it for
             // the next retrieval.
-            auto elemFromView = *(embeddedBsonArrayIteratorStack.top());
-            ++(embeddedBsonArrayIteratorStack.top());
+            auto elemFromView = *(_embeddedBsonArrayIteratorStack.top());
+            ++(_embeddedBsonArrayIteratorStack.top());
 
             if (!elemFromView) {
                 throw cereal::Exception(
@@ -402,30 +402,30 @@ public:
     void startNode() {
         // If we're not in the root node, match the next key to an embedded document
         // or array.
-        if (itsNodeStack.top() == NodeState::InObject ||
-            itsNodeStack.top() == NodeState::InEmbeddedObject ||
-            itsNodeStack.top() == NodeState::InEmbeddedArray) {
+        if (_nodeTypeStack.top() == InputNodeType::InObject ||
+            _nodeTypeStack.top() == InputNodeType::InEmbeddedObject ||
+            _nodeTypeStack.top() == InputNodeType::InEmbeddedArray) {
 
             // From the BSON document we're currently in, fetch the value associated
             // with
             // this node and update the relevant stacks.
             auto newNode = search();
             if (newNode->type() == bsoncxx::type::k_document) {
-                embeddedBsonDocStack.push(newNode->get_document().value);
-                itsNodeStack.push(NodeState::InEmbeddedObject);
+                _embeddedBsonDocStack.push(newNode->get_document().value);
+                _nodeTypeStack.push(InputNodeType::InEmbeddedObject);
             } else if (newNode->type() == bsoncxx::type::k_array) {
-                embeddedBsonArrayStack.push(newNode->get_array().value);
-                embeddedBsonArrayIteratorStack.push(embeddedBsonArrayStack.top().begin());
-                itsNodeStack.push(NodeState::InEmbeddedArray);
+                _embeddedBsonArrayStack.push(newNode->get_array().value);
+                _embeddedBsonArrayIteratorStack.push(_embeddedBsonArrayStack.top().begin());
+                _nodeTypeStack.push(InputNodeType::InEmbeddedArray);
             } else {
                 throw cereal::Exception("Node requested is neither document nor array.\n");
             }
 
-        } else if (itsNodeStack.top() == NodeState::Root) {
+        } else if (_nodeTypeStack.top() == InputNodeType::Root) {
             // If we are in the root node, update the state of the node we're
             // currently in,
             // but do not do anything else.
-            itsNodeStack.push(NodeState::InObject);
+            _nodeTypeStack.push(InputNodeType::InObject);
         }
     }
 
@@ -436,19 +436,19 @@ public:
     void finishNode() {
         // If we're in an embedded object or array, pop it from its respective
         // stack(s).
-        if (itsNodeStack.top() == NodeState::InEmbeddedObject) {
-            embeddedBsonDocStack.pop();
-        } else if (itsNodeStack.top() == NodeState::InEmbeddedArray) {
-            embeddedBsonArrayStack.pop();
-            embeddedBsonArrayIteratorStack.pop();
+        if (_nodeTypeStack.top() == InputNodeType::InEmbeddedObject) {
+            _embeddedBsonDocStack.pop();
+        } else if (_nodeTypeStack.top() == InputNodeType::InEmbeddedArray) {
+            _embeddedBsonArrayStack.pop();
+            _embeddedBsonArrayIteratorStack.pop();
         }
 
         // Pop the node type from the stack.
-        itsNodeStack.pop();
+        _nodeTypeStack.pop();
 
         // If we're now in Root, go to the next BSON document
-        if (itsNodeStack.top() == NodeState::Root) {
-            ++curBsonView;
+        if (_nodeTypeStack.top() == InputNodeType::Root) {
+            ++_curBsonView;
         }
     }
 
@@ -459,7 +459,7 @@ public:
      *  The name of the next node
      */
     void setNextName(const char* name) {
-        itsNextName = name;
+        _nextName = name;
     }
 
     // TODO: this can also just be handled by BSONCXX
@@ -653,39 +653,39 @@ public:
      * stack.
      */
     void loadSize(size_type& size) {
-        if (itsNodeStack.top() != NodeState::InEmbeddedArray) {
+        if (_nodeTypeStack.top() != InputNodeType::InEmbeddedArray) {
             throw cereal::Exception("Requesting a size tag when not in an array.\n");
         }
-        size =
-            std::distance(embeddedBsonArrayStack.top().begin(), embeddedBsonArrayStack.top().end());
+        size = std::distance(_embeddedBsonArrayStack.top().begin(),
+                             _embeddedBsonArrayStack.top().end());
     }
 
 private:
     // The key name of the next element being searched.
-    const char* itsNextName;
+    const char* _nextName;
 
     // The stream of BSON being read.
-    std::istream& itsReadStream;
+    std::istream& _readStream;
 
     // The raw BSON data read from the stream.
-    std::vector<buffer_type> rawBsonDocuments;
+    std::vector<buffer_type> _rawBsonDocuments;
 
     // The bsoncxx document views of the raw BSON data.
-    std::vector<bsoncxx::document::view> bsonViews;
+    std::vector<bsoncxx::document::view> _bsonViews;
 
     // The current root BSON document being viewed.
-    std::vector<bsoncxx::document::view>::iterator curBsonView;
+    std::vector<bsoncxx::document::view>::iterator _curBsonView;
 
     // Stack maintaining views of embedded BSON documents.
-    std::stack<bsoncxx::document::view> embeddedBsonDocStack;
+    std::stack<bsoncxx::document::view> _embeddedBsonDocStack;
 
     // Stacks maintaining views of embedded BSON arrays, as well as their
     // iterators.
-    std::stack<bsoncxx::array::view> embeddedBsonArrayStack;
-    std::stack<bsoncxx::array::view::iterator> embeddedBsonArrayIteratorStack;
+    std::stack<bsoncxx::array::view> _embeddedBsonArrayStack;
+    std::stack<bsoncxx::array::view::iterator> _embeddedBsonArrayIteratorStack;
 
     // A stack maintaining the state of the node currently being worked on.
-    std::stack<NodeState> itsNodeStack;
+    std::stack<InputNodeType> _nodeTypeStack;
 
 };  // BSONInputArchive
 
