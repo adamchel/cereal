@@ -2,8 +2,8 @@
 #define CEREAL_ARCHIVES_BSON_HPP_
 
 #include <stack>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include <cereal/cereal.hpp>
 
@@ -17,8 +17,7 @@ namespace cereal {
  */
 template <class BsonT>
 struct is_bson {
-    static constexpr bool value =
-        std::is_same<BsonT, bsoncxx::types::b_double>::value ||
+    static constexpr bool value = std::is_same<BsonT, bsoncxx::types::b_double>::value ||
         std::is_same<BsonT, bsoncxx::types::b_utf8>::value ||
         std::is_same<BsonT, bsoncxx::types::b_document>::value ||
         std::is_same<BsonT, bsoncxx::types::b_array>::value ||
@@ -39,18 +38,18 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
 
     typedef bsoncxx::builder::core BSONBuilder;
 
-    public:
+public:
     /**
     * Construct a BSONOutputArchive that will output to the provided stream.
     *
     * @param stream
     *   The stream to which the archiver will output BSON data to.
     */
-    BSONOutputArchive(std::ostream &stream)
+    BSONOutputArchive(std::ostream& stream)
         : OutputArchive<BSONOutputArchive>{this},
-        itsBuilder{false},
-        itsWriteStream{stream},
-        itsNextName{nullptr} {
+          itsBuilder{false},
+          itsWriteStream{stream},
+          itsNextName{nullptr} {
         itsNameCounter.push(0);
         itsNodeStack.push(NodeType::Root);
     }
@@ -110,8 +109,8 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
                 // Write the BSON data for the document that was just completed,
                 // and reset the builder for the next document.
                 itsWriteStream.write(
-                reinterpret_cast<const char *>(itsBuilder.view_document().data()),
-                itsBuilder.view_document().length());
+                    reinterpret_cast<const char*>(itsBuilder.view_document().data()),
+                    itsBuilder.view_document().length());
                 itsBuilder.clear();
             }
         }
@@ -123,7 +122,9 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      * @param name
      *    The name for the next node or element.
      */
-    void setNextName(const char *name) { itsNextName = name; }
+    void setNextName(const char* name) {
+        itsNextName = name;
+    }
 
     /**
      * Implementations of saveValue that save a BSON type to the current node,
@@ -164,7 +165,9 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      * @param i
      *    The int32_t to save to the archive.
      */
-    void saveValue(std::int32_t i) { itsBuilder.append(i); }
+    void saveValue(std::int32_t i) {
+        itsBuilder.append(i);
+    }
 
     /**
      * Saves a signed 32 bit int to the current node.
@@ -172,7 +175,9 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      * @param i
      *    The int32_t to save to the archive.
      */
-    void saveValue(std::int64_t i) { itsBuilder.append(i); }
+    void saveValue(std::int64_t i) {
+        itsBuilder.append(i);
+    }
 
     /**
      * Saves a double to the current node.
@@ -180,7 +185,9 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      * @param d
      *    The double to save to the archive.
      */
-    void saveValue(double d) { itsBuilder.append(d); }
+    void saveValue(double d) {
+        itsBuilder.append(d);
+    }
 
     /**
      * Saves a std::string to the current node.
@@ -188,7 +195,9 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      * @param s
      *    The std::string to save to the archive.
      */
-    void saveValue(std::string const &s) { itsBuilder.append(s); }
+    void saveValue(std::string const& s) {
+        itsBuilder.append(s);
+    }
 
     /**
      * Saves a c style string to the current node.
@@ -196,7 +205,9 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      * @param s
      *    The char* string to save to the archive.
      */
-    void saveValue(char const *s) { itsBuilder.append(s); }
+    void saveValue(char const* s) {
+        itsBuilder.append(s);
+    }
 
     /**
      * Write the name of the upcoming element and prepare object/array state
@@ -212,7 +223,7 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      *   5. Finish the node.
      */
     void writeName() {
-        NodeType const &nodeType = itsNodeStack.top();
+        NodeType const& nodeType = itsNodeStack.top();
 
         // Start up either an object or an array, depending on state.
         if (nodeType == NodeType::StartArray) {
@@ -226,12 +237,12 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
         }
 
         // Elements in arrays do not have names.
-        if (nodeType == NodeType::InArray) return;
+        if (nodeType == NodeType::InArray)
+            return;
 
         if (itsNextName == nullptr) {
             // Generate a unique name for this unnamed node.
-            std::string name =
-            "value" + std::to_string(itsNameCounter.top()++) + "\0";
+            std::string name = "value" + std::to_string(itsNameCounter.top()++) + "\0";
             itsBuilder.key_owned(name);
         } else {
             // Set the key of this element to the name stored by the archiver.
@@ -244,7 +255,9 @@ class BSONOutputArchive : public OutputArchive<BSONOutputArchive> {
      * Designates that the current node should be output as an array, not an
      * object.
      */
-    void makeArray() { itsNodeStack.top() = NodeType::StartArray; }
+    void makeArray() {
+        itsNodeStack.top() = NodeType::StartArray;
+    }
 
 private:
     // The BSONCXX builder for this archive.
@@ -265,8 +278,7 @@ private:
 };  // BSONOutputArchive
 
 
-class BSONInputArchive : public InputArchive<BSONInputArchive>,
-                         public traits::TextArchive {
+class BSONInputArchive : public InputArchive<BSONInputArchive>, public traits::TextArchive {
 private:
     typedef std::vector<char> buffer_type;
     enum class NodeState { Root, InObject, InEmbeddedObject, InEmbeddedArray };
@@ -278,10 +290,8 @@ public:
     * @param stream
     *    The stream from which to read BSON data.
     */
-    BSONInputArchive(std::istream &stream)
-        : InputArchive<BSONInputArchive>(this),
-        itsNextName(nullptr),
-        itsReadStream(stream) {
+    BSONInputArchive(std::istream& stream)
+        : InputArchive<BSONInputArchive>(this), itsNextName(nullptr), itsReadStream(stream) {
 
         // Add the root node to the stack.
         itsNodeStack.push(NodeState::Root);
@@ -309,9 +319,9 @@ public:
             rawBsonDocuments.push_back(std::move(bsonData));
 
             // Get a BSONCXX view of the document.
-            bsonViews.push_back(bsoncxx::document::view{
-            reinterpret_cast<uint8_t *>(&rawBsonDocuments.back()[0]),
-            static_cast<size_t>(docsize)});
+            bsonViews.push_back(
+                bsoncxx::document::view{reinterpret_cast<uint8_t*>(&rawBsonDocuments.back()[0]),
+                                        static_cast<size_t>(docsize)});
         }
 
         // Set the root view iterator to the first BSON document in the stream.
@@ -319,18 +329,17 @@ public:
     }
 
 private:
-
     /**
      * Searches for the next BSON element to be retrieved and loaded.
      *
-     * @return a pointer to the element with itsNextName as a key, or if the current node is an 
+     * @return a pointer to the element with itsNextName as a key, or if the current node is an
      *         array, the next element in that array.
      */
     inline std::unique_ptr<bsoncxx::document::element> search() {
         // Set up the return value.
         std::unique_ptr<bsoncxx::document::element> elem;
 
-        if (itsNextName) { 
+        if (itsNextName) {
             // If we're in an object in the Root (InObject),
             // look for the key in the current BSON view.
             if (itsNodeStack.top() == NodeState::InObject) {
@@ -338,7 +347,7 @@ private:
                 elem.reset(new bsoncxx::document::element(elemFromView));
             }
 
-            // If we're in an embedded object, look for the key in the object 
+            // If we're in an embedded object, look for the key in the object
             // at the top of the embedded object stack.
             if (itsNodeStack.top() == NodeState::InEmbeddedObject) {
                 auto elemFromView = embeddedBsonDocStack.top()[itsNextName];
@@ -361,33 +370,31 @@ private:
 
         } else if (itsNodeStack.top() == NodeState::InEmbeddedArray) {
             // If we're in an array (InEmbeddedArray), retrieve an element from
-            // the array iterator at the top of the stack, and increment it for 
+            // the array iterator at the top of the stack, and increment it for
             // the next retrieval.
             auto elemFromView = *(embeddedBsonArrayIteratorStack.top());
             ++(embeddedBsonArrayIteratorStack.top());
 
             if (!elemFromView) {
                 throw cereal::Exception(
-                "Invalid element found in array, or array is out of bounds.\n");
+                    "Invalid element found in array, or array is out of bounds.\n");
             }
 
             // TODO: figure out why array::element privately inherits.
             // Construct a bsoncxx::document::element from the components
             // of the bsoncxx::array::element.
             elem.reset(new bsoncxx::document::element(
-            elemFromView.raw(), elemFromView.length(), elemFromView.offset()));
+                elemFromView.raw(), elemFromView.length(), elemFromView.offset()));
 
             return elem;
         }
 
         // Return an invalid element.
         // TODO: Maybe this should be an exception.
-        return std::unique_ptr<bsoncxx::document::element>(
-        new bsoncxx::document::element());
+        return std::unique_ptr<bsoncxx::document::element>(new bsoncxx::document::element());
     }
 
 public:
-
     /**
     * Starts a new node, and update the stacks so that
     * we fetch the correct data when calling search().
@@ -408,12 +415,10 @@ public:
                 itsNodeStack.push(NodeState::InEmbeddedObject);
             } else if (newNode->type() == bsoncxx::type::k_array) {
                 embeddedBsonArrayStack.push(newNode->get_array().value);
-                embeddedBsonArrayIteratorStack.push(
-                embeddedBsonArrayStack.top().begin());
+                embeddedBsonArrayIteratorStack.push(embeddedBsonArrayStack.top().begin());
                 itsNodeStack.push(NodeState::InEmbeddedArray);
             } else {
-                throw cereal::Exception(
-                "Node requested is neither document nor array.\n");
+                throw cereal::Exception("Node requested is neither document nor array.\n");
             }
 
         } else if (itsNodeStack.top() == NodeState::Root) {
@@ -424,7 +429,7 @@ public:
         }
     }
 
-    /** 
+    /**
      * Finishes the most recently started node by popping relevant stacks
      * and, if necessary, iterating to the next root BSON document.
      */
@@ -453,7 +458,9 @@ public:
      * @param name
      *  The name of the next node
      */
-    void setNextName(const char *name) { itsNextName = name; }
+    void setNextName(const char* name) {
+        itsNextName = name;
+    }
 
     // TODO: this can also just be handled by BSONCXX
     // void assert_type(bsoncxx::element, bsoncxx::type t) {
@@ -472,7 +479,7 @@ public:
      * @param val
      *    The BSON variable into which the double will be loaded.
      */
-    void loadValue(bsoncxx::types::b_double &val) {
+    void loadValue(bsoncxx::types::b_double& val) {
         val = search()->get_double();
     }
 
@@ -482,7 +489,9 @@ public:
      * @param val
      *    The BSON variable into which the UTF-8 will be loaded.
      */
-    void loadValue(bsoncxx::types::b_utf8 &val) { val = search()->get_utf8(); }
+    void loadValue(bsoncxx::types::b_utf8& val) {
+        val = search()->get_utf8();
+    }
 
     /**
      * Loads a BSON document from the current node.
@@ -490,7 +499,7 @@ public:
      * @param val
      *    The BSON variable into which the document will be loaded.
      */
-    void loadValue(bsoncxx::types::b_document &val) {
+    void loadValue(bsoncxx::types::b_document& val) {
         val = search()->get_document();
     }
 
@@ -500,7 +509,9 @@ public:
      * @param val
      *    The BSON variable into which the array will be loaded.
      */
-    void loadValue(bsoncxx::types::b_array &val) { val = search()->get_array(); }
+    void loadValue(bsoncxx::types::b_array& val) {
+        val = search()->get_array();
+    }
 
     /**
      * Loads a BSON binary data value from the current node.
@@ -508,7 +519,7 @@ public:
      * @param val
      *    The BSON variable into which the binary data will be loaded.
      */
-    void loadValue(bsoncxx::types::b_binary &val) {
+    void loadValue(bsoncxx::types::b_binary& val) {
         val = search()->get_binary();
     }
 
@@ -518,7 +529,7 @@ public:
      * @param val
      *    The BSON variable into which the OID will be loaded.
      */
-    void loadValue(bsoncxx::types::b_oid &val) {
+    void loadValue(bsoncxx::types::b_oid& val) {
         val.value = search()->get_oid().value;
     }
 
@@ -528,7 +539,9 @@ public:
      * @param val
      *    The oid variable into which the OID will be loaded.
      */
-    void loadValue(bsoncxx::oid &val) { val = search()->get_oid().value; }
+    void loadValue(bsoncxx::oid& val) {
+        val = search()->get_oid().value;
+    }
 
     /**
      * Loads a bool from the current node.
@@ -536,7 +549,9 @@ public:
      * @param val
      *    The BSON variable into which the bool will be loaded.
      */
-    void loadValue(bsoncxx::types::b_bool &val) { val = search()->get_bool(); }
+    void loadValue(bsoncxx::types::b_bool& val) {
+        val = search()->get_bool();
+    }
 
     /**
      * Loads a BSON datetime from the current node.
@@ -544,7 +559,9 @@ public:
      * @param val
      *    The BSON variable into which the datetime will be loaded.
      */
-    void loadValue(bsoncxx::types::b_date &val) { val = search()->get_date(); }
+    void loadValue(bsoncxx::types::b_date& val) {
+        val = search()->get_date();
+    }
 
     /**
      * Loads a 32 bit int from the current node.
@@ -552,7 +569,9 @@ public:
      * @param val
      *    The BSON variable into which the int will be loaded.
      */
-    void loadValue(bsoncxx::types::b_int32 &val) { val = search()->get_int32(); }
+    void loadValue(bsoncxx::types::b_int32& val) {
+        val = search()->get_int32();
+    }
 
     /**
      * Loads a 64 bit int from the current node.
@@ -560,7 +579,9 @@ public:
      * @param val
      *    The BSON variable into which the int will be loaded.
      */
-    void loadValue(bsoncxx::types::b_int64 &val) { val = search()->get_int64(); }
+    void loadValue(bsoncxx::types::b_int64& val) {
+        val = search()->get_int64();
+    }
 
     /**
      * Loads a BSON datetime from the current node.
@@ -568,7 +589,7 @@ public:
      * @param val
      *    The time_point variable into which the datetime will be loaded.
      */
-    void loadValue(std::chrono::system_clock::time_point &val) {
+    void loadValue(std::chrono::system_clock::time_point& val) {
         val = search()->get_date();
     }
 
@@ -578,7 +599,9 @@ public:
      * @param val
      *    The boolean variable into which the bool will be loaded.
      */
-    void loadValue(bool &val) { val = search()->get_bool(); }
+    void loadValue(bool& val) {
+        val = search()->get_bool();
+    }
 
     /**
      * Loads a 32 bit int from the current node.
@@ -586,7 +609,9 @@ public:
      * @param val
      *    The int32_t variable into which the int will be loaded.
      */
-    void loadValue(std::int32_t &val) { val = search()->get_int32(); }
+    void loadValue(std::int32_t& val) {
+        val = search()->get_int32();
+    }
 
     /**
      * Loads a 64 bit int from the current node.
@@ -594,7 +619,9 @@ public:
      * @param val
      *    The int64_t variable into which the int will be loaded.
      */
-    void loadValue(std::int64_t &val) { val = search()->get_int64(); }
+    void loadValue(std::int64_t& val) {
+        val = search()->get_int64();
+    }
 
     /**
      * Loads a double from the current node.
@@ -602,7 +629,9 @@ public:
      * @param val
      *    The double variable into which the double will be loaded.
      */
-    void loadValue(double &val) { val = search()->get_double(); }
+    void loadValue(double& val) {
+        val = search()->get_double();
+    }
 
     /**
      * Loads a BSON UTF-8 value from the current node.
@@ -610,7 +639,7 @@ public:
      * @param val
      *    The std::string variable into which the UTF-8 will be loaded.
      */
-    void loadValue(std::string &val) {
+    void loadValue(std::string& val) {
         val = search()->get_utf8().value.to_string();
     }
 
@@ -620,22 +649,23 @@ public:
      * elements to put into a container such as a std::vector.
      *
      * @param size
-     *  A reference ot the size value that will be set to the size of the array at the tiop of the stack.
-     */ 
-    void loadSize(size_type &size) {
+     *  A reference ot the size value that will be set to the size of the array at the tiop of the
+     * stack.
+     */
+    void loadSize(size_type& size) {
         if (itsNodeStack.top() != NodeState::InEmbeddedArray) {
             throw cereal::Exception("Requesting a size tag when not in an array.\n");
         }
-        size = std::distance(embeddedBsonArrayStack.top().begin(),
-                            embeddedBsonArrayStack.top().end());
+        size =
+            std::distance(embeddedBsonArrayStack.top().begin(), embeddedBsonArrayStack.top().end());
     }
 
 private:
     // The key name of the next element being searched.
-    const char *itsNextName;
+    const char* itsNextName;
 
     // The stream of BSON being read.
-    std::istream &itsReadStream;
+    std::istream& itsReadStream;
 
     // The raw BSON data read from the stream.
     std::vector<buffer_type> rawBsonDocuments;
@@ -667,78 +697,75 @@ private:
 // Prologue for NVPs for BSON output archives
 // NVPs do not start or finish nodes - they just set up the names
 template <class T>
-inline void prologue(BSONOutputArchive &, NameValuePair<T> const &) {}
+inline void prologue(BSONOutputArchive&, NameValuePair<T> const&) {}
 
 // Prologue for NVPs for BSON input archives
 template <class T>
-inline void prologue(BSONInputArchive &, NameValuePair<T> const &) {}
+inline void prologue(BSONInputArchive&, NameValuePair<T> const&) {}
 
 // ######################################################################
 // Epilogue for NVPs for BSON output archives
 // NVPs do not start or finish nodes - they just set up the names
 template <class T>
-inline void epilogue(BSONOutputArchive &, NameValuePair<T> const &) {}
+inline void epilogue(BSONOutputArchive&, NameValuePair<T> const&) {}
 
 // Epilogue for NVPs for BSON input archives
 // NVPs do not start or finish nodes - they just set up the names
 template <class T>
-inline void epilogue(BSONInputArchive &, NameValuePair<T> const &) {}
+inline void epilogue(BSONInputArchive&, NameValuePair<T> const&) {}
 
 // ######################################################################
 // Prologue for SizeTags for BSON output archives
 // SizeTags are strictly ignored for BSON, they just indicate
 // that the current node should be made into an array
 template <class T>
-inline void prologue(BSONOutputArchive &ar, SizeTag<T> const &) {
-  ar.makeArray();
+inline void prologue(BSONOutputArchive& ar, SizeTag<T> const&) {
+    ar.makeArray();
 }
 
 // Prologue for SizeTags for BSON input archives
 template <class T>
-inline void prologue(BSONInputArchive &, SizeTag<T> const &) {}
+inline void prologue(BSONInputArchive&, SizeTag<T> const&) {}
 
 // ######################################################################
 // Epilogue for SizeTags for BSON output archives
 // SizeTags are strictly ignored for BSON
 template <class T>
-inline void epilogue(BSONOutputArchive &, SizeTag<T> const &) {}
+inline void epilogue(BSONOutputArchive&, SizeTag<T> const&) {}
 
 // Epilogue for SizeTags for BSON input archives
 template <class T>
-inline void epilogue(BSONInputArchive &, SizeTag<T> const &) {}
+inline void epilogue(BSONInputArchive&, SizeTag<T> const&) {}
 
 // ######################################################################
 // Prologue and Epilogue for BSON types, which should not be confused
 // as objects or arrays
 
-template <class BsonT, traits::EnableIf<is_bson<BsonT>::value || std::is_same<BsonT, std::chrono::system_clock::time_point>::value> = traits::sfinae>
-inline void prologue(BSONOutputArchive &ar, BsonT const &) {
+template <class BsonT,
+          traits::EnableIf<is_bson<BsonT>::value ||
+                           std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void prologue(BSONOutputArchive& ar, BsonT const&) {
     ar.writeName();
 }
 
-template <
-    class BsonT,
-    traits::EnableIf<
-        is_bson<BsonT>::value ||
-        std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void epilogue(BSONOutputArchive &, BsonT const &) {}
+template <class BsonT,
+          traits::EnableIf<is_bson<BsonT>::value ||
+                           std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void epilogue(BSONOutputArchive&, BsonT const&) {}
 
-template <
-    class BsonT,
-    traits::EnableIf<
-        is_bson<BsonT>::value ||
-        std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void prologue(BSONInputArchive &ar, BsonT const &) {}
+template <class BsonT,
+          traits::EnableIf<is_bson<BsonT>::value ||
+                           std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void prologue(BSONInputArchive& ar, BsonT const&) {}
 
-template <
-    class BsonT,
-    traits::EnableIf<
-        is_bson<BsonT>::value ||
-        std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void epilogue(BSONInputArchive &, BsonT const &) {}
+template <class BsonT,
+          traits::EnableIf<is_bson<BsonT>::value ||
+                           std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void epilogue(BSONInputArchive&, BsonT const&) {}
 
 // ######################################################################
 // Prologue for all other types for BSON output archives (except minimal types)
@@ -746,18 +773,16 @@ inline void epilogue(BSONInputArchive &, BsonT const &) {}
 // that may be given data by the type about to be archived
 
 // Minimal types do not start or finish nodes
-template <
-    class T,
-    traits::DisableIf<
-        std::is_arithmetic<T>::value ||
-        traits::has_minimal_base_class_serialization<
-            T, traits::has_minimal_output_serialization,
-            BSONOutputArchive>::value ||
-        traits::has_minimal_output_serialization<T, BSONOutputArchive>::value ||
-        is_bson<T>::value ||
-        std::is_same<T, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void prologue(BSONOutputArchive &ar, T const &) {
+template <class T,
+          traits::DisableIf<
+              std::is_arithmetic<T>::value ||
+              traits::has_minimal_base_class_serialization<T,
+                                                           traits::has_minimal_output_serialization,
+                                                           BSONOutputArchive>::value ||
+              traits::has_minimal_output_serialization<T, BSONOutputArchive>::value ||
+              is_bson<T>::value || std::is_same<T, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void prologue(BSONOutputArchive& ar, T const&) {
     ar.startNode();
 }
 
@@ -766,14 +791,12 @@ template <
     class T,
     traits::DisableIf<
         std::is_arithmetic<T>::value ||
-        traits::has_minimal_base_class_serialization<
-            T, traits::has_minimal_input_serialization,
-            BSONInputArchive>::value ||
-        traits::has_minimal_input_serialization<T, BSONInputArchive>::value ||
-        is_bson<T>::value ||
-        std::is_same<T, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void prologue(BSONInputArchive &ar, T const &) {
+        traits::has_minimal_base_class_serialization<T,
+                                                     traits::has_minimal_input_serialization,
+                                                     BSONInputArchive>::value ||
+        traits::has_minimal_input_serialization<T, BSONInputArchive>::value || is_bson<T>::value ||
+        std::is_same<T, std::chrono::system_clock::time_point>::value> = traits::sfinae>
+inline void prologue(BSONInputArchive& ar, T const&) {
     ar.startNode();
 }
 
@@ -783,18 +806,16 @@ inline void prologue(BSONInputArchive &ar, T const &) {
 // Finishes the node created in the prologue
 
 // Minimal types do not start or finish nodes
-template <
-    class T,
-    traits::DisableIf<
-        std::is_arithmetic<T>::value ||
-        traits::has_minimal_base_class_serialization<
-            T, traits::has_minimal_output_serialization,
-            BSONOutputArchive>::value ||
-        traits::has_minimal_output_serialization<T, BSONOutputArchive>::value ||
-        is_bson<T>::value ||
-        std::is_same<T, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void epilogue(BSONOutputArchive &ar, T const &) {
+template <class T,
+          traits::DisableIf<
+              std::is_arithmetic<T>::value ||
+              traits::has_minimal_base_class_serialization<T,
+                                                           traits::has_minimal_output_serialization,
+                                                           BSONOutputArchive>::value ||
+              traits::has_minimal_output_serialization<T, BSONOutputArchive>::value ||
+              is_bson<T>::value || std::is_same<T, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void epilogue(BSONOutputArchive& ar, T const&) {
     ar.finishNode();
 }
 
@@ -803,145 +824,126 @@ template <
     class T,
     traits::DisableIf<
         std::is_arithmetic<T>::value ||
-        traits::has_minimal_base_class_serialization<
-            T, traits::has_minimal_input_serialization,
-            BSONInputArchive>::value ||
-        traits::has_minimal_input_serialization<T, BSONInputArchive>::value ||
-        is_bson<T>::value ||
-        std::is_same<T, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void epilogue(BSONInputArchive &ar, T const &) {
+        traits::has_minimal_base_class_serialization<T,
+                                                     traits::has_minimal_input_serialization,
+                                                     BSONInputArchive>::value ||
+        traits::has_minimal_input_serialization<T, BSONInputArchive>::value || is_bson<T>::value ||
+        std::is_same<T, std::chrono::system_clock::time_point>::value> = traits::sfinae>
+inline void epilogue(BSONInputArchive& ar, T const&) {
     ar.finishNode();
 }
 
 // ######################################################################
 // Prologue for arithmetic types for BSON output archives
-template <class T,
-          traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void prologue(BSONOutputArchive &ar, T const &) {
+template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
+inline void prologue(BSONOutputArchive& ar, T const&) {
     ar.writeName();
 }
 
 // Prologue for arithmetic types for BSON input archives
-template <class T,
-          traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void prologue(BSONInputArchive &, T const &) {}
+template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
+inline void prologue(BSONInputArchive&, T const&) {}
 
 // ######################################################################
 // Epilogue for arithmetic types for BSON output archives
-template <class T,
-          traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void epilogue(BSONOutputArchive &, T const &) {}
+template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
+inline void epilogue(BSONOutputArchive&, T const&) {}
 
 // Epilogue for arithmetic types for BSON input archives
-template <class T,
-          traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void epilogue(BSONInputArchive &, T const &) {}
+template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
+inline void epilogue(BSONInputArchive&, T const&) {}
 
 // ######################################################################
 // Prologue for strings for BSON output archives
 template <class CharT, class Traits, class Alloc>
-inline void prologue(BSONOutputArchive &ar,
-                     std::basic_string<CharT, Traits, Alloc> const &) {
+inline void prologue(BSONOutputArchive& ar, std::basic_string<CharT, Traits, Alloc> const&) {
     ar.writeName();
 }
 
 // Prologue for strings for BSON input archives
 template <class CharT, class Traits, class Alloc>
-inline void prologue(BSONInputArchive &,
-                     std::basic_string<CharT, Traits, Alloc> const &) {}
+inline void prologue(BSONInputArchive&, std::basic_string<CharT, Traits, Alloc> const&) {}
 
 // ######################################################################
 // Epilogue for strings for BSON output archives
 template <class CharT, class Traits, class Alloc>
-inline void epilogue(BSONOutputArchive &,
-                     std::basic_string<CharT, Traits, Alloc> const &) {}
+inline void epilogue(BSONOutputArchive&, std::basic_string<CharT, Traits, Alloc> const&) {}
 
 // Epilogue for strings for BSON output archives
 template <class CharT, class Traits, class Alloc>
-inline void epilogue(BSONInputArchive &,
-                     std::basic_string<CharT, Traits, Alloc> const &) {}
+inline void epilogue(BSONInputArchive&, std::basic_string<CharT, Traits, Alloc> const&) {}
 
 // ######################################################################
 // Common BSONArchive serialization functions
 // ######################################################################
 // Serializing NVP types to BSON
 template <class T>
-inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive &ar,
-                                      NameValuePair<T> const &t) {
+inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive& ar, NameValuePair<T> const& t) {
     ar.setNextName(t.name);
     ar(t.value);
 }
 
 template <class T>
-inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive &ar,
-                                      NameValuePair<T> &t) {
+inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive& ar, NameValuePair<T>& t) {
     ar.setNextName(t.name);
     ar(t.value);
 }
 
 // Saving for arithmetic to BSON
-template <class T,
-          traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive &ar, T const &t) {
+template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
+inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive& ar, T const& t) {
     ar.saveValue(t);
 }
 
 // Loading arithmetic from BSON
-template <class T,
-          traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive &ar, T &t) {
+template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
+inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive& ar, T& t) {
     ar.loadValue(t);
 }
 
 // saving string to BSON
 template <class CharT, class Traits, class Alloc>
-inline void CEREAL_SAVE_FUNCTION_NAME(
-    BSONOutputArchive &ar, std::basic_string<CharT, Traits, Alloc> const &str) {
+inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive& ar,
+                                      std::basic_string<CharT, Traits, Alloc> const& str) {
     ar.saveValue(str);
 }
 
 // loading string from BSON
 template <class CharT, class Traits, class Alloc>
-inline void CEREAL_LOAD_FUNCTION_NAME(
-    BSONInputArchive &ar, std::basic_string<CharT, Traits, Alloc> &str) {
+inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive& ar,
+                                      std::basic_string<CharT, Traits, Alloc>& str) {
     ar.loadValue(str);
 }
 
 // ######################################################################
 // Saving SizeTags to BSON
 template <class T>
-inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive &, SizeTag<T> const &) {
+inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive&, SizeTag<T> const&) {
     // Nothing to do here, we don't explicitly save the size.
 }
 
 // Loading SizeTags from BSON
 template <class T>
-inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive &ar, SizeTag<T> &st) {
+inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive& ar, SizeTag<T>& st) {
     ar.loadSize(st.size);
 }
 
 // ######################################################################
 // Saving BSON types to BSON
-template <
-    class BsonT,
-    traits::EnableIf<
-        is_bson<BsonT>::value ||
-        std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive &ar,
-                                      BsonT const &bsonVal) {
+template <class BsonT,
+          traits::EnableIf<is_bson<BsonT>::value ||
+                           std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void CEREAL_SAVE_FUNCTION_NAME(BSONOutputArchive& ar, BsonT const& bsonVal) {
     ar.saveValue(bsonVal);
 }
 
 // Loading BSON types from BSON
-template <
-    class BsonT,
-    traits::EnableIf<
-        is_bson<BsonT>::value ||
-        std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
-        traits::sfinae>
-inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive &ar, BsonT &bsonVal) {
+template <class BsonT,
+          traits::EnableIf<is_bson<BsonT>::value ||
+                           std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
+              traits::sfinae>
+inline void CEREAL_LOAD_FUNCTION_NAME(BSONInputArchive& ar, BsonT& bsonVal) {
     ar.loadValue(bsonVal);
 }
 
