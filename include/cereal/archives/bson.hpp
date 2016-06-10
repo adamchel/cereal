@@ -54,6 +54,29 @@ public:
         _nodeTypeStack.push(OutputNodeType::Root);
     }
 
+private:
+    /**
+     * Writes the current contents of the BSON document builder to the
+     * output stream.
+     */
+    void writeDoc() {
+        _writeStream.write(reinterpret_cast<const char*>(_bsonBuilder.view_document().data()),
+                           _bsonBuilder.view_document().length());
+        _bsonBuilder.clear();
+    }
+
+public:
+
+    /**
+     * Checks if the most recent object written was in the root of the document.
+     * If so, that document is written to the archive.
+     */
+    void writeDocIfRoot() {
+        if (_nodeTypeStack.top() == OutputNodeType::Root) {
+            writeDoc();
+        }
+    }
+
     /**
      * Starts a new node in the BSON output.
      *
@@ -83,6 +106,7 @@ public:
                 _bsonBuilder.open_array();
             case OutputNodeType::InArray:
                 _bsonBuilder.close_array();
+                closedObj = true;
                 break;
             case OutputNodeType::StartObject:
                 if (_nodeTypeStack.size() > 2) {
@@ -101,18 +125,8 @@ public:
         _nodeTypeStack.pop();
         _nameCounter.pop();
 
-        // TODO: Somehow resolve issue where non-object
-        // values pushed to root will end up in the next
-        // object.
         if (closedObj) {
-            if (_nodeTypeStack.top() == OutputNodeType::Root) {
-                // Write the BSON data for the document that was just completed,
-                // and reset the builder for the next document.
-                _writeStream.write(
-                    reinterpret_cast<const char*>(_bsonBuilder.view_document().data()),
-                    _bsonBuilder.view_document().length());
-                _bsonBuilder.clear();
-            }
+            writeDocIfRoot();
         }
     }
 
@@ -145,6 +159,7 @@ public:
      * @param tp
      *    The timepoint to save to the archive.
      */
+    // TODO: add writeDocIfRoot to epilogue
     void saveValue(std::chrono::system_clock::time_point tp) {
         _bsonBuilder.append(bsoncxx::types::b_date{tp});
     }
@@ -231,6 +246,7 @@ public:
             _nodeTypeStack.top() = OutputNodeType::InArray;
         } else if (nodeType == OutputNodeType::StartObject) {
             _nodeTypeStack.top() = OutputNodeType::InObject;
+            // TODO: Get rid of root from node stack and make this > 1.
             if (_nodeTypeStack.size() > 2) {
                 _bsonBuilder.open_document();
             }
@@ -277,11 +293,11 @@ private:
 
 };  // BSONOutputArchive
 
-
+// TODO: Modify so that root elements that aren't objects are parsed properly.
 class BSONInputArchive : public InputArchive<BSONInputArchive>, public traits::TextArchive {
-private:
+
     typedef std::vector<char> buffer_type;
-    enum class InputNodeType { Root, InObject, InEmbeddedObject, InEmbeddedArray };
+    enum class InputNodeType { Root, InObject, InEmbeddedObject, InEmbeddedArray, InRootElement };
 
 public:
     /**
@@ -304,6 +320,7 @@ public:
         // Collect every BSON documents from the stream.
         while (_readStream.tellg() < streamLength) {
             // Determine the size of the BSON document in bytes.
+            // TODO: Only works on little endian.
             int32_t docsize;
             char docsize_buf[4];
             _readStream.read(docsize_buf, sizeof(docsize));
@@ -317,6 +334,10 @@ public:
             _readStream.seekg(-sizeof(docsize), std::ios_base::cur);
             _readStream.read(&bsonData[0], docsize);
             _rawBsonDocuments.push_back(std::move(bsonData));
+
+            // TODO: Push these into a bsoncxx::document::value
+            //       create a "new uint8_t[docsize]" to pass into the value
+            //       [](uint8_t* p){delete[] p} for the deleter
 
             // Get a BSONCXX view of the document.
             _bsonViews.push_back(
@@ -342,8 +363,12 @@ private:
         if (_nextName) {
             // If we're in an object in the Root (InObject),
             // look for the key in the current BSON view.
-            if (_nodeTypeStack.top() == InputNodeType::InObject) {
+            if (_nodeTypeStack.top() == InputNodeType::InObject ||
+                _nodeTypeStack.top() == InputNodeType::InRootElement) {
                 auto elemFromView = (*_curBsonView)[_nextName];
+                // TODO:
+                // if elemFromView
+                //    return elemFromView
                 elem.reset(new bsoncxx::document::element(elemFromView));
             }
 
@@ -395,6 +420,20 @@ private:
     }
 
 public:
+
+    void startRootElementIfRoot() {
+        if(_nodeTypeStack.top() == InputNodeType::Root) {
+            _nodeTypeStack.push(InputNodeType::InRootElement);
+        }
+    }
+
+    void finishRootElementIfRootElement() {
+        if(_nodeTypeStack.top() == InputNodeType::InRootElement) {
+            _nodeTypeStack.pop();
+            ++_curBsonView;
+        }
+    }
+
     /**
     * Starts a new node, and update the stacks so that
     * we fetch the correct data when calling search().
@@ -404,7 +443,8 @@ public:
         // or array.
         if (_nodeTypeStack.top() == InputNodeType::InObject ||
             _nodeTypeStack.top() == InputNodeType::InEmbeddedObject ||
-            _nodeTypeStack.top() == InputNodeType::InEmbeddedArray) {
+            _nodeTypeStack.top() == InputNodeType::InEmbeddedArray ||
+            _nodeTypeStack.top() == InputNodeType::InRootElement) {
 
             // From the BSON document we're currently in, fetch the value associated
             // with
@@ -448,6 +488,9 @@ public:
 
         // If we're now in Root, go to the next BSON document
         if (_nodeTypeStack.top() == InputNodeType::Root) {
+            ++_curBsonView;
+        } else if (_nodeTypeStack.top() == InputNodeType::InRootElement) {
+            _nodeTypeStack.pop();
             ++_curBsonView;
         }
     }
@@ -643,7 +686,6 @@ public:
         val = search()->get_utf8().value.to_string();
     }
 
-public:
     /**
      * Loads the size for a SizeTag, which is used by Cereal to determine how many
      * elements to put into a container such as a std::vector.
@@ -753,19 +795,25 @@ template <class BsonT,
           traits::EnableIf<is_bson<BsonT>::value ||
                            std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
               traits::sfinae>
-inline void epilogue(BSONOutputArchive&, BsonT const&) {}
+inline void epilogue(BSONOutputArchive& ar, BsonT const&) {
+    ar.writeDocIfRoot();
+}
 
 template <class BsonT,
           traits::EnableIf<is_bson<BsonT>::value ||
                            std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
               traits::sfinae>
-inline void prologue(BSONInputArchive& ar, BsonT const&) {}
+inline void prologue(BSONInputArchive& ar, BsonT const&) {
+    ar.startRootElementIfRoot();
+}
 
 template <class BsonT,
           traits::EnableIf<is_bson<BsonT>::value ||
                            std::is_same<BsonT, std::chrono::system_clock::time_point>::value> =
               traits::sfinae>
-inline void epilogue(BSONInputArchive&, BsonT const&) {}
+inline void epilogue(BSONInputArchive& ar, BsonT const&) {
+    ar.finishRootElementIfRootElement();
+}
 
 // ######################################################################
 // Prologue for all other types for BSON output archives (except minimal types)
@@ -786,6 +834,12 @@ inline void prologue(BSONOutputArchive& ar, T const&) {
     ar.startNode();
 }
 
+template <class N>
+struct is_vector { static constexpr bool value = false; };
+
+template <class N, class A>
+struct is_vector<std::vector<N, A> > { static constexpr bool value = true; };
+
 // Prologue for all other types for BSON input archives
 template <
     class T,
@@ -797,6 +851,9 @@ template <
         traits::has_minimal_input_serialization<T, BSONInputArchive>::value || is_bson<T>::value ||
         std::is_same<T, std::chrono::system_clock::time_point>::value> = traits::sfinae>
 inline void prologue(BSONInputArchive& ar, T const&) {
+    if(is_vector<T>::value) {
+        ar.startRootElementIfRoot();
+    }
     ar.startNode();
 }
 
@@ -842,16 +899,22 @@ inline void prologue(BSONOutputArchive& ar, T const&) {
 
 // Prologue for arithmetic types for BSON input archives
 template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void prologue(BSONInputArchive&, T const&) {}
+inline void prologue(BSONInputArchive& ar, T const&) {
+    ar.startRootElementIfRoot();
+}
 
 // ######################################################################
 // Epilogue for arithmetic types for BSON output archives
 template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void epilogue(BSONOutputArchive&, T const&) {}
+inline void epilogue(BSONOutputArchive& ar, T const&) {
+    ar.writeDocIfRoot();
+}
 
 // Epilogue for arithmetic types for BSON input archives
 template <class T, traits::EnableIf<std::is_arithmetic<T>::value> = traits::sfinae>
-inline void epilogue(BSONInputArchive&, T const&) {}
+inline void epilogue(BSONInputArchive& ar, T const&) {
+    ar.finishRootElementIfRootElement();
+}
 
 // ######################################################################
 // Prologue for strings for BSON output archives
@@ -862,16 +925,22 @@ inline void prologue(BSONOutputArchive& ar, std::basic_string<CharT, Traits, All
 
 // Prologue for strings for BSON input archives
 template <class CharT, class Traits, class Alloc>
-inline void prologue(BSONInputArchive&, std::basic_string<CharT, Traits, Alloc> const&) {}
+inline void prologue(BSONInputArchive& ar, std::basic_string<CharT, Traits, Alloc> const&) {
+    ar.startRootElementIfRoot();
+}
 
 // ######################################################################
 // Epilogue for strings for BSON output archives
 template <class CharT, class Traits, class Alloc>
-inline void epilogue(BSONOutputArchive&, std::basic_string<CharT, Traits, Alloc> const&) {}
+inline void epilogue(BSONOutputArchive& ar, std::basic_string<CharT, Traits, Alloc> const&) {
+    ar.writeDocIfRoot();
+}
 
 // Epilogue for strings for BSON output archives
 template <class CharT, class Traits, class Alloc>
-inline void epilogue(BSONInputArchive&, std::basic_string<CharT, Traits, Alloc> const&) {}
+inline void epilogue(BSONInputArchive& ar, std::basic_string<CharT, Traits, Alloc> const&) {
+    ar.finishRootElementIfRootElement();
+}
 
 // ######################################################################
 // Common BSONArchive serialization functions
